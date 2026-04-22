@@ -69,6 +69,30 @@ class TextQueryRequest(BaseModel):
     language: Language = "en"
 
 
+class MultiMedicineRequest(BaseModel):
+    medicines: List[str] = Field(default_factory=list)
+    language: Language = "en"
+
+
+class MedicineEntry(BaseModel):
+    name: str
+    summary: str
+    uses: List[str] = []
+    dosage_note: str = ""
+    safety_tips: List[str] = []
+
+
+class MultiMedicineResponse(BaseModel):
+    medicines: List[MedicineEntry]
+    interactions: List[str] = []
+    combined_safety: List[str] = []
+    when_to_see_doctor: List[str] = []
+    red_flag: bool = False
+    red_flag_message: Optional[str] = None
+    disclaimer: str
+    language: Language = "en"
+
+
 class AudioTranscribeRequest(BaseModel):
     audio_base64: str
     mime_type: str = "audio/m4a"
@@ -243,6 +267,108 @@ async def medical_query(req: TextQueryRequest):
             language=req.language,
         ).model_dump()
     )
+    return resp
+
+
+MULTI_SYSTEM_PROMPT = SYSTEM_PROMPT + """
+
+WHEN THE USER PROVIDES MULTIPLE MEDICINES (1 to 3):
+Return ONLY valid minified JSON with this schema (no markdown):
+{
+ "medicines": [
+   {
+     "name": string,
+     "summary": string,            // 1-2 simple lines
+     "uses": [string],              // short bullets
+     "dosage_note": string,         // safe general note
+     "safety_tips": [string]
+   }
+ ],
+ "interactions": [string],          // any known interactions between these medicines
+ "combined_safety": [string],       // general safety when taking them together
+ "when_to_see_doctor": [string],
+ "red_flag": boolean,
+ "red_flag_message": string|null,
+ "disclaimer": string,
+ "language": "en"|"hi"
+}
+Guidance: be specific, simple, multilingual. If a medicine is unfamiliar or risky in combination, urge doctor consultation. Do NOT invent medicines.
+"""
+
+
+def _coerce_multi_response(raw: dict, language: Language) -> MultiMedicineResponse:
+    default_disclaimer = (
+        "यह पुष्ट निदान नहीं है। कृपया किसी योग्य डॉक्टर से परामर्श करें।"
+        if language == "hi"
+        else "This is not a confirmed diagnosis. Please consult a qualified doctor."
+    )
+    meds_raw = raw.get("medicines") or []
+    meds: List[MedicineEntry] = []
+    for m in meds_raw:
+        if not isinstance(m, dict):
+            continue
+        meds.append(
+            MedicineEntry(
+                name=m.get("name", "") or "",
+                summary=m.get("summary", "") or "",
+                uses=m.get("uses", []) or [],
+                dosage_note=m.get("dosage_note", "") or "",
+                safety_tips=m.get("safety_tips", []) or [],
+            )
+        )
+    return MultiMedicineResponse(
+        medicines=meds,
+        interactions=raw.get("interactions", []) or [],
+        combined_safety=raw.get("combined_safety", []) or [],
+        when_to_see_doctor=raw.get("when_to_see_doctor", []) or [],
+        red_flag=bool(raw.get("red_flag", False)),
+        red_flag_message=raw.get("red_flag_message"),
+        disclaimer=raw.get("disclaimer") or default_disclaimer,
+        language=raw.get("language", language) if raw.get("language") in ("en", "hi") else language,
+    )
+
+
+@api_router.post("/multi-medicine-query", response_model=MultiMedicineResponse)
+async def multi_medicine_query(req: MultiMedicineRequest):
+    names = [m.strip() for m in req.medicines if m and m.strip()]
+    if not names:
+        raise HTTPException(status_code=400, detail="No medicines provided")
+    if len(names) > 3:
+        raise HTTPException(status_code=400, detail="Maximum 3 medicines allowed")
+
+    bullet_list = "\n".join(f"- {n}" for n in names)
+    task = (
+        "The user has provided the following medicine(s) and wants to know what they are and how to use them. "
+        "If more than one is given, ALSO analyse potential interactions and combined safety concerns.\n\n"
+        f"Medicines:\n{bullet_list}\n\n"
+        "Return the multi-medicine JSON schema."
+    )
+    parts = [{"text": _build_user_instruction(task, req.language)}]
+
+    # Use the extended multi-medicine system prompt
+    payload = {
+        "system_instruction": {"parts": [{"text": MULTI_SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "response_mime_type": "application/json",
+        },
+    }
+    headers = {"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY}
+    async with httpx.AsyncClient(timeout=60.0) as hc:
+        r = await hc.post(GEMINI_URL, headers=headers, json=payload)
+    if r.status_code != 200:
+        logger.error("Gemini multi error %s: %s", r.status_code, r.text[:500])
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {r.status_code}")
+    data = r.json()
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+        raw = json.loads(text)
+    except Exception as e:
+        logger.error("Parse failed: %s / %s", e, str(data)[:500])
+        raise HTTPException(status_code=502, detail="Unexpected Gemini response")
+
+    resp = _coerce_multi_response(raw, req.language)
     return resp
 
 

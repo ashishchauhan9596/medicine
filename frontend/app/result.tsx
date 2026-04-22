@@ -8,17 +8,22 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { ArrowLeft } from "lucide-react-native";
+import { ArrowLeft, AlertTriangle } from "lucide-react-native";
 
 import { COLORS, RADIUS, SPACING } from "../src/theme";
 import { useAppStore } from "../src/store/useAppStore";
 import ResultCard from "../src/components/ResultCard";
+import MultiResultCard from "../src/components/MultiResultCard";
+import SkeletonResultCard from "../src/components/SkeletonResultCard";
 import LanguageToggle from "../src/components/LanguageToggle";
 
 export default function ResultScreen() {
   const router = useRouter();
   const t = useAppStore((s) => s.t);
-  const data = useAppStore((s) => s.lastResponse);
+  const single = useAppStore((s) => s.lastResponse);
+  const multi = useAppStore((s) => s.lastMultiResponse);
+  const isLoading = useAppStore((s) => s.isLoadingResponse);
+  const loadError = useAppStore((s) => s.loadError);
   const inputLabel = useAppStore((s) => s.lastInputLabel);
 
   return (
@@ -48,8 +53,28 @@ export default function ResultScreen() {
           </View>
         ) : null}
 
-        {data ? (
-          <ResultCard data={data} />
+        {isLoading ? (
+          <SkeletonResultCard />
+        ) : loadError ? (
+          <View style={styles.errorCard} testID="error-card">
+            <AlertTriangle
+              size={28}
+              color={COLORS.warningText}
+              strokeWidth={2.2}
+            />
+            <Text style={styles.errorText}>{loadError}</Text>
+            <Pressable
+              testID="back-from-error"
+              onPress={() => router.replace("/")}
+              style={styles.retryBtn}
+            >
+              <Text style={styles.retryBtnText}>{t("back")}</Text>
+            </Pressable>
+          </View>
+        ) : multi ? (
+          <MultiResultCard data={multi} />
+        ) : single ? (
+          <ResultCard data={single} />
         ) : (
           <View style={styles.emptyCard} testID="empty-result">
             <Text style={styles.emptyText}>{t("error_empty")}</Text>
@@ -117,6 +142,29 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   emptyText: { color: COLORS.textSecondary, fontSize: 16 },
+  errorCard: {
+    backgroundColor: COLORS.warningBg,
+    borderRadius: RADIUS.md,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: COLORS.warningText,
+    alignItems: "center",
+    marginBottom: SPACING.lg,
+  },
+  errorText: {
+    color: COLORS.warningText,
+    fontSize: 15,
+    marginTop: SPACING.sm,
+    textAlign: "center",
+  },
+  retryBtn: {
+    marginTop: SPACING.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.warningText,
+    borderRadius: RADIUS.sm,
+  },
+  retryBtnText: { color: COLORS.textInverse, fontWeight: "700" },
   newBtn: {
     backgroundColor: COLORS.primary,
     paddingVertical: SPACING.md,

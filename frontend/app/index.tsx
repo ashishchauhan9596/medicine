@@ -11,7 +11,8 @@ import {
   Alert,
   Modal,
   Keyboard,
-} from "react-native";import { SafeAreaView } from "react-native-safe-area-context";
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
@@ -23,6 +24,8 @@ import {
   Image as ImageIcon,
   X,
   Leaf,
+  Plus,
+  Pill,
 } from "lucide-react-native";
 
 import { COLORS, RADIUS, SPACING } from "../src/theme";
@@ -32,24 +35,23 @@ import RecordingPulse from "../src/components/RecordingPulse";
 import {
   identifyMedicineImage,
   medicalQuery,
+  multiMedicineQuery,
   transcribeAudio,
 } from "../src/services/api";
 
-type Busy =
-  | { kind: "idle" }
-  | { kind: "image" }
-  | { kind: "text" }
-  | { kind: "transcribing" };
+const MAX_MEDICINES = 3;
 
 export default function HomeScreen() {
   const router = useRouter();
   const t = useAppStore((s) => s.t);
   const lang = useAppStore((s) => s.lang);
+  const beginRequest = useAppStore((s) => s.beginRequest);
   const setLastResponse = useAppStore((s) => s.setLastResponse);
-  const setLastInputLabel = useAppStore((s) => s.setLastInputLabel);
+  const setLastMultiResponse = useAppStore((s) => s.setLastMultiResponse);
+  const setLoadError = useAppStore((s) => s.setLoadError);
 
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState<Busy>({ kind: "idle" });
+  const [chips, setChips] = useState<string[]>([]);
   const [recording, setRecording] = useState<Audio.Recording | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [transcribed, setTranscribed] = useState<string | null>(null);
@@ -63,41 +65,67 @@ export default function HomeScreen() {
     };
   }, []);
 
-  const isBusy = busy.kind !== "idle" || isRecording;
-
-  // --- Helpers ---
   const handleError = (e: unknown) => {
     console.warn("[Pahadi]", e);
-    Alert.alert(t("error_generic"), String(e));
+    setLoadError(t("error_generic"));
   };
 
-  const navigateToResult = (label: string, resp: any) => {
-    setLastResponse(resp);
-    setLastInputLabel(label);
-    router.push("/result");
+  // --- Add / remove medicine chips ---
+  const addChip = () => {
+    const name = text.trim();
+    if (!name) return;
+    if (chips.length >= MAX_MEDICINES) {
+      Alert.alert(t("max_medicines_reached"));
+      return;
+    }
+    setChips([...chips, name]);
+    setText("");
+    setTranscribed(null);
+    Haptics.selectionAsync().catch(() => {});
   };
 
-  // --- Text flow ---
-  const onAskText = async (overrideText?: string) => {
-    const q = (overrideText ?? text).trim();
-    if (!q) {
+  const removeChip = (i: number) => {
+    setChips(chips.filter((_, idx) => idx !== i));
+  };
+
+  // --- Ask flow ---
+  const onAsk = async () => {
+    const pending = text.trim();
+    // If user typed something, treat it as the final medicine to include (if chips exist) or a single query.
+    const allMedicines =
+      chips.length > 0
+        ? pending
+          ? [...chips, pending].slice(0, MAX_MEDICINES)
+          : chips
+        : [];
+    const isMulti = allMedicines.length > 0;
+
+    if (!isMulti && !pending) {
       Alert.alert(t("error_empty"));
       return;
     }
+
     Keyboard.dismiss();
-    setBusy({ kind: "text" });
+    const label = isMulti ? allMedicines.join(", ") : pending;
+    beginRequest(label);
+    router.push("/result");
+
     try {
-      const resp = await medicalQuery(q, lang);
+      if (isMulti) {
+        const resp = await multiMedicineQuery(allMedicines, lang);
+        setLastMultiResponse(resp);
+      } else {
+        const resp = await medicalQuery(pending, lang);
+        setLastResponse(resp);
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
-      navigateToResult(q, resp);
       setText("");
+      setChips([]);
       setTranscribed(null);
     } catch (e) {
       handleError(e);
-    } finally {
-      setBusy({ kind: "idle" });
     }
   };
 
@@ -105,12 +133,9 @@ export default function HomeScreen() {
   const pickImage = async (fromCamera: boolean) => {
     setShowImageModal(false);
     try {
-      let perm;
-      if (fromCamera) {
-        perm = await ImagePicker.requestCameraPermissionsAsync();
-      } else {
-        perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      }
+      const perm = fromCamera
+        ? await ImagePicker.requestCameraPermissionsAsync()
+        : await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (!perm.granted) {
         Alert.alert(t("permission_denied"));
         return;
@@ -135,20 +160,20 @@ export default function HomeScreen() {
         return;
       }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-
-      setBusy({ kind: "image" });
       const mime =
         asset.mimeType ||
         (asset.uri?.toLowerCase().endsWith(".png") ? "image/png" : "image/jpeg");
+
+      beginRequest(t("image_input"));
+      router.push("/result");
+
       const resp = await identifyMedicineImage(asset.base64, mime, lang);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(
         () => {},
       );
-      navigateToResult(t("image_input"), resp);
+      setLastResponse(resp);
     } catch (e) {
       handleError(e);
-    } finally {
-      setBusy({ kind: "idle" });
     }
   };
 
@@ -165,29 +190,25 @@ export default function HomeScreen() {
         playsInSilentModeIOS: true,
       });
       const rec = new Audio.Recording();
-      await rec.prepareToRecordAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-      );
+      await rec.prepareToRecordAsync(Audio.RecordingOptionsPresets.HIGH_QUALITY);
       await rec.startAsync();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
       setRecording(rec);
       setIsRecording(true);
     } catch (e) {
-      handleError(e);
+      console.warn(e);
+      Alert.alert(t("error_generic"));
     }
   };
 
   const stopRecording = async () => {
     if (!recording) return;
     setIsRecording(false);
-    setBusy({ kind: "transcribing" });
     try {
       await recording.stopAndUnloadAsync();
       const uri = recording.getURI();
       setRecording(null);
       if (!uri) throw new Error("No recording file");
-
-      // Fetch as blob → base64
       const resp = await fetch(uri);
       const blob = await resp.blob();
       const base64: string = await new Promise((resolve, reject) => {
@@ -199,10 +220,7 @@ export default function HomeScreen() {
         };
         reader.readAsDataURL(blob);
       });
-
-      const mime =
-        Platform.OS === "ios" ? "audio/m4a" : "audio/m4a";
-      const tr = await transcribeAudio(base64, mime);
+      const tr = await transcribeAudio(base64, "audio/m4a");
       const cleaned = (tr.text || "").trim();
       if (!cleaned) {
         Alert.alert(t("error_generic"));
@@ -212,7 +230,6 @@ export default function HomeScreen() {
         () => {},
       );
       setTranscribed(cleaned);
-      // Type the transcription into the input char-by-char, like AI is writing.
       setText("");
       let i = 0;
       if (typeIntervalRef.current) clearInterval(typeIntervalRef.current);
@@ -225,11 +242,14 @@ export default function HomeScreen() {
         }
       }, 35);
     } catch (e) {
-      handleError(e);
-    } finally {
-      setBusy({ kind: "idle" });
+      console.warn(e);
+      Alert.alert(t("error_generic"));
     }
   };
+
+  const canAsk = text.trim().length > 0 || chips.length > 0;
+  const canAddMore =
+    chips.length < MAX_MEDICINES && text.trim().length > 0;
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "left", "right"]}>
@@ -245,137 +265,163 @@ export default function HomeScreen() {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
         >
-            {/* Header */}
-            <View style={styles.header}>
-              <View style={styles.brandRow}>
-                <View style={styles.logoBubble}>
-                  <Leaf size={22} color={COLORS.primary} strokeWidth={2.4} />
-                </View>
-                <View style={styles.brandTextWrap}>
-                  <Text
-                    style={styles.brand}
-                    testID="app-title"
-                    numberOfLines={1}
-                  >
-                    {t("app_name")}
-                  </Text>
-                  <Text style={styles.tagline} numberOfLines={1}>
-                    {t("tagline")}
-                  </Text>
-                </View>
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={styles.brandRow}>
+              <View style={styles.logoBubble}>
+                <Leaf size={22} color={COLORS.primary} strokeWidth={2.4} />
               </View>
-              <LanguageToggle />
+              <View style={styles.brandTextWrap}>
+                <Text style={styles.brand} testID="app-title" numberOfLines={1}>
+                  {t("app_name")}
+                </Text>
+                <Text style={styles.tagline} numberOfLines={1}>
+                  {t("tagline")}
+                </Text>
+              </View>
             </View>
+            <LanguageToggle />
+          </View>
 
-            <View style={styles.heroCard}>
-              <Text style={styles.heroTitle}>{t("empty_state_title")}</Text>
-              <Text style={styles.heroBody}>{t("empty_state_body")}</Text>
+          <View style={styles.heroCard}>
+            <Text style={styles.heroTitle}>{t("empty_state_title")}</Text>
+            <Text style={styles.heroBody}>{t("empty_state_body")}</Text>
+          </View>
+
+          {/* Big buttons */}
+          <View style={styles.bigRow}>
+            <Pressable
+              testID="camera-input-button"
+              style={({ pressed }) => [
+                styles.bigBtn,
+                pressed && styles.pressed,
+              ]}
+              onPress={() => setShowImageModal(true)}
+            >
+              <View style={styles.bigIconWrap}>
+                <Camera size={34} color={COLORS.textInverse} strokeWidth={2.2} />
+              </View>
+              <Text style={styles.bigBtnText}>{t("camera_btn")}</Text>
+              <Text style={styles.bigBtnHint}>{t("camera_hint")}</Text>
+            </Pressable>
+
+            <Pressable
+              testID="voice-input-button"
+              style={({ pressed }) => [
+                styles.bigBtn,
+                styles.bigBtnSecondary,
+                pressed && styles.pressed,
+              ]}
+              onPress={isRecording ? stopRecording : startRecording}
+            >
+              <View
+                style={[
+                  styles.bigIconWrap,
+                  isRecording && { backgroundColor: COLORS.warningText },
+                ]}
+              >
+                {isRecording ? (
+                  <X size={34} color={COLORS.textInverse} strokeWidth={2.4} />
+                ) : (
+                  <Mic size={34} color={COLORS.textInverse} strokeWidth={2.2} />
+                )}
+              </View>
+              <Text style={styles.bigBtnText}>
+                {isRecording ? t("stop_recording") : t("voice_btn")}
+              </Text>
+              <Text style={styles.bigBtnHint}>
+                {isRecording ? t("recording") : t("voice_hint")}
+              </Text>
+            </Pressable>
+          </View>
+
+          {isRecording ? (
+            <View style={styles.pulseWrap}>
+              <RecordingPulse size={80} />
+              <Text style={styles.pulseLabel}>{t("recording")}</Text>
             </View>
+          ) : null}
 
-            {/* Big buttons */}
-            <View style={styles.bigRow}>
+          {/* Medicine chips */}
+          {chips.length > 0 ? (
+            <View style={styles.chipsSection} testID="chips-section">
+              <Text style={styles.chipsLabel}>
+                {t("medicines_label")} ({chips.length}/{MAX_MEDICINES})
+              </Text>
+              <View style={styles.chipsRow}>
+                {chips.map((c, i) => (
+                  <View key={i} style={styles.chip} testID={`chip-${i}`}>
+                    <Pill size={14} color={COLORS.primary} strokeWidth={2.4} />
+                    <Text style={styles.chipText} numberOfLines={1}>
+                      {c}
+                    </Text>
+                    <Pressable
+                      testID={`chip-remove-${i}`}
+                      onPress={() => removeChip(i)}
+                      hitSlop={8}
+                      style={styles.chipClose}
+                    >
+                      <X size={14} color={COLORS.textSecondary} strokeWidth={2.4} />
+                    </Pressable>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          {/* Text input + Add / Ask */}
+          <View style={styles.inputBlock}>
+            {transcribed ? (
+              <Text style={styles.editHint} testID="edit-transcription-hint">
+                {t("edit_transcription")}
+              </Text>
+            ) : null}
+            <View style={styles.inputRow}>
+              <TextInput
+                testID="text-input"
+                placeholder={t("text_placeholder")}
+                placeholderTextColor={COLORS.textSecondary}
+                style={styles.input}
+                value={text}
+                onChangeText={setText}
+                multiline
+                returnKeyType="search"
+                onSubmitEditing={onAsk}
+                onFocus={() => {
+                  setTimeout(() => {
+                    scrollRef.current?.scrollToEnd({ animated: true });
+                  }, 300);
+                }}
+              />
               <Pressable
-                testID="camera-input-button"
+                testID="ask-button"
+                onPress={onAsk}
+                disabled={!canAsk}
                 style={({ pressed }) => [
-                  styles.bigBtn,
+                  styles.sendBtn,
+                  !canAsk && styles.sendBtnDisabled,
                   pressed && styles.pressed,
                 ]}
-                disabled={isBusy}
-                onPress={() => setShowImageModal(true)}
               >
-                <View style={styles.bigIconWrap}>
-                  <Camera size={34} color={COLORS.textInverse} strokeWidth={2.2} />
-                </View>
-                <Text style={styles.bigBtnText}>{t("camera_btn")}</Text>
-                <Text style={styles.bigBtnHint}>{t("camera_hint")}</Text>
+                <Send size={22} color={COLORS.textInverse} strokeWidth={2.4} />
               </Pressable>
+            </View>
 
+            {canAddMore ? (
               <Pressable
-                testID="voice-input-button"
+                testID="add-medicine-button"
+                onPress={addChip}
                 style={({ pressed }) => [
-                  styles.bigBtn,
-                  styles.bigBtnSecondary,
+                  styles.addBtn,
                   pressed && styles.pressed,
                 ]}
-                disabled={busy.kind === "image" || busy.kind === "text"}
-                onPress={isRecording ? stopRecording : startRecording}
               >
-                <View
-                  style={[
-                    styles.bigIconWrap,
-                    isRecording && { backgroundColor: COLORS.warningText },
-                  ]}
-                >
-                  {isRecording ? (
-                    <X size={34} color={COLORS.textInverse} strokeWidth={2.4} />
-                  ) : (
-                    <Mic size={34} color={COLORS.textInverse} strokeWidth={2.2} />
-                  )}
-                </View>
-                <Text style={styles.bigBtnText}>
-                  {isRecording ? t("stop_recording") : t("voice_btn")}
-                </Text>
-                <Text style={styles.bigBtnHint}>
-                  {isRecording ? t("recording") : t("voice_hint")}
-                </Text>
+                <Plus size={16} color={COLORS.primary} strokeWidth={2.6} />
+                <Text style={styles.addBtnText}>{t("add_medicine")}</Text>
               </Pressable>
-            </View>
-
-            {isRecording ? (
-              <View style={styles.pulseWrap}>
-                <RecordingPulse size={80} />
-                <Text style={styles.pulseLabel}>{t("recording")}</Text>
-              </View>
             ) : null}
-
-            {/* Text input */}
-            <View style={styles.inputBlock}>
-              {transcribed ? (
-                <Text style={styles.editHint} testID="edit-transcription-hint">
-                  {t("edit_transcription")}
-                </Text>
-              ) : null}
-              <View style={styles.inputRow}>
-                <TextInput
-                  testID="text-input"
-                  placeholder={t("text_placeholder")}
-                  placeholderTextColor={COLORS.textSecondary}
-                  style={styles.input}
-                  value={text}
-                  onChangeText={setText}
-                  multiline
-                  editable={!isBusy || busy.kind === "transcribing"}
-                  returnKeyType="search"
-                  onSubmitEditing={() => onAskText()}
-                  onFocus={() => {
-                    setTimeout(() => {
-                      scrollRef.current?.scrollToEnd({ animated: true });
-                    }, 300);
-                  }}
-                />
-                <Pressable
-                  testID="ask-button"
-                  onPress={() => onAskText()}
-                  disabled={isBusy || !text.trim()}
-                  style={({ pressed }) => [
-                    styles.sendBtn,
-                    (isBusy || !text.trim()) && styles.sendBtnDisabled,
-                    pressed && styles.pressed,
-                  ]}
-                >
-                  <Send size={22} color={COLORS.textInverse} strokeWidth={2.4} />
-                </Pressable>
-              </View>
-            </View>
-
-            {/* Loading */}
-            {busy.kind !== "idle" ? (
-              <View style={styles.loadingCard} testID="loading-card">
-                <Text style={styles.loadingText}>{t("loading")}</Text>
-              </View>
-            ) : null}
-
-          </ScrollView>
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
 
       {/* Image picker modal */}
@@ -475,11 +521,7 @@ const styles = StyleSheet.create({
   },
   heroBody: { fontSize: 15, color: COLORS.textSecondary, lineHeight: 22 },
 
-  bigRow: {
-    flexDirection: "row",
-    gap: SPACING.md,
-    marginBottom: SPACING.md,
-  },
+  bigRow: { flexDirection: "row", gap: SPACING.md, marginBottom: SPACING.md },
   bigBtn: {
     flex: 1,
     backgroundColor: COLORS.primary,
@@ -512,17 +554,51 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.85 },
 
-  pulseWrap: {
-    alignItems: "center",
-    paddingVertical: SPACING.lg,
-  },
+  pulseWrap: { alignItems: "center", paddingVertical: SPACING.lg },
   pulseLabel: {
     marginTop: SPACING.sm,
     color: COLORS.primary,
     fontWeight: "700",
   },
 
-  inputBlock: { marginTop: SPACING.md, marginBottom: SPACING.md },
+  chipsSection: { marginTop: SPACING.md, marginBottom: SPACING.sm },
+  chipsLabel: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: COLORS.textSecondary,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+    marginBottom: SPACING.sm,
+  },
+  chipsRow: { flexDirection: "row", flexWrap: "wrap", gap: SPACING.sm },
+  chip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: COLORS.primaryLight,
+    borderRadius: RADIUS.full,
+    paddingLeft: SPACING.sm,
+    paddingRight: 6,
+    paddingVertical: 6,
+    marginRight: SPACING.sm,
+    marginBottom: SPACING.sm,
+    maxWidth: "100%",
+  },
+  chipText: {
+    color: COLORS.primary,
+    fontWeight: "700",
+    marginHorizontal: 6,
+    maxWidth: 180,
+  },
+  chipClose: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: COLORS.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  inputBlock: { marginTop: SPACING.sm, marginBottom: SPACING.md },
   editHint: {
     fontSize: 13,
     color: COLORS.accent,
@@ -554,16 +630,22 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { backgroundColor: COLORS.borderSubtle },
 
-  loadingCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.borderSubtle,
-    padding: SPACING.lg,
+  addBtn: {
+    flexDirection: "row",
     alignItems: "center",
-    marginBottom: SPACING.md,
+    justifyContent: "center",
+    paddingVertical: SPACING.sm,
+    marginTop: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primaryLight,
+    gap: SPACING.xs,
   },
-  loadingText: { color: COLORS.textSecondary, fontSize: 15 },
+  addBtnText: {
+    color: COLORS.primary,
+    fontWeight: "800",
+    fontSize: 14,
+    marginLeft: 6,
+  },
 
   modalBackdrop: {
     flex: 1,

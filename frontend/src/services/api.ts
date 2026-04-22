@@ -1,5 +1,8 @@
 import type { Lang } from "../i18n/translations";
-import type { MedicalResponse } from "../store/useAppStore";
+import type {
+  MedicalResponse,
+  MultiMedicineResponse,
+} from "../store/useAppStore";
 
 const BASE_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? "";
 
@@ -35,6 +38,16 @@ export async function medicalQuery(
   return postJson<MedicalResponse>("/medical-query", { query, language });
 }
 
+export async function multiMedicineQuery(
+  medicines: string[],
+  language: Lang,
+): Promise<MultiMedicineResponse> {
+  return postJson<MultiMedicineResponse>("/multi-medicine-query", {
+    medicines,
+    language,
+  });
+}
+
 export async function transcribeAudio(
   audioBase64: string,
   mimeType: string,
@@ -44,5 +57,3 @@ export async function transcribeAudio(
     mime_type: mimeType,
   });
 }
-
-// history endpoints removed

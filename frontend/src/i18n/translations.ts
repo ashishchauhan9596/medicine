@@ -50,6 +50,13 @@ const en: Dict = {
   cancel: "Cancel",
   edit_transcription: "Edit before searching",
   search: "Search",
+  add_medicine: "+ Add medicine",
+  medicines_label: "Medicines to check",
+  max_medicines_reached: "You can check up to 3 medicines together.",
+  interactions_title: "Interactions",
+  combined_safety_title: "Combined safety",
+  no_interactions: "No known major interactions.",
+  preparing: "Preparing your answer…",
 };
 
 const hi: Dict = {
@@ -95,6 +102,13 @@ const hi: Dict = {
   cancel: "रद्द करें",
   edit_transcription: "खोज से पहले संपादित करें",
   search: "खोजें",
+  add_medicine: "+ दवा जोड़ें",
+  medicines_label: "जांचने के लिए दवाएँ",
+  max_medicines_reached: "एक साथ अधिकतम 3 दवाएँ जांच सकते हैं।",
+  interactions_title: "परस्पर प्रभाव",
+  combined_safety_title: "संयुक्त सुरक्षा",
+  no_interactions: "कोई बड़ा ज्ञात प्रभाव नहीं।",
+  preparing: "आपका उत्तर तैयार हो रहा है…",
 };
 
 export const translations: Record<Lang, Dict> = { en, hi };
