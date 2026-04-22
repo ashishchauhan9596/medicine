@@ -1,0 +1,116 @@
+{
+  "theme_and_archetype": {
+    "theme": "light",
+    "archetype": "1 (Organic & Earthy)",
+    "reasoning": "Patients and rural users need warmth, calm, and trust. A clinical cold dark mode is intimidating. A warm, earthy palette with large, soft touch points reduces friction and builds trust. The design should prioritize absolute simplicity for users with limited digital literacy."
+  },
+  "typography": {
+    "strategy": "Multilingual High-Legibility (English + Hindi)",
+    "primary_font": "System (sans-serif). Standardized system fonts avoid font-loading lag and render Devanagari script (Hindi) optimally.",
+    "hierarchy": {
+      "h1": { "fontSize": 32, "fontWeight": "bold", "lineHeight": 40, "letterSpacing": -0.5 },
+      "h2": { "fontSize": 24, "fontWeight": "bold", "lineHeight": 32 },
+      "body_large": { "fontSize": 18, "fontWeight": "normal", "lineHeight": 28 },
+      "body": { "fontSize": 16, "fontWeight": "normal", "lineHeight": 24 },
+      "caption": { "fontSize": 14, "fontWeight": "500", "letterSpacing": 0.5, "textTransform": "uppercase" }
+    }
+  },
+  "color_palette": {
+    "background": {
+      "app": "#F9F9F7",
+      "surface": "#FFFFFF",
+      "overlay": "rgba(27, 38, 34, 0.5)"
+    },
+    "brand": {
+      "primary": "#2C6E49",
+      "primary_light": "#E9F5EC",
+      "accent": "#D4A373"
+    },
+    "feedback": {
+      "warning_bg": "#FBEAE5",
+      "warning_text": "#D94A38",
+      "success": "#2C6E49",
+      "disclaimer_bg": "#F5F3E9"
+    },
+    "text": {
+      "primary": "#1B2622",
+      "secondary": "#6B7A75",
+      "inverse": "#FFFFFF"
+    },
+    "border": {
+      "subtle": "#E5EBE7",
+      "focus": "#2C6E49"
+    }
+  },
+  "layout_and_spacing": {
+    "philosophy": "Rural-Friendly, Frictionless Touch",
+    "touch_targets": "MINIMUM 48px height and width for any interactive element. Ideal 56px to 64px for primary actions like Camera and Voice.",
+    "spacing_scale": {
+      "xs": 4,
+      "sm": 8,
+      "md": 16,
+      "lg": 24,
+      "xl": 32,
+      "xxl": 48
+    },
+    "borders": {
+      "radius_sm": 8,
+      "radius_md": 16,
+      "radius_lg": 24,
+      "radius_full": 9999
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": "Solid primary color (#2C6E49) with white text, min 56px height, rounded-xl for organic feel.",
+      "secondary": "Outlined with subtle border (#E5EBE7), text primary, min 56px height.",
+      "floating_action": "Massive 72x72 buttons for Voice and Camera input. Positioned prominently, not hidden. Use soft ambient shadows."
+    },
+    "cards": {
+      "ai_response": "Surface white (#FFFFFF), radius 16px, subtle 1px border (#E5EBE7), generous internal padding (24px). DO NOT use heavy shadows. Left-align text for readability.",
+      "red_flag_banner": "Warning background (#FBEAE5) with bold Warning text (#D94A38), large warning icon 🚨. Fixed at top or highly visible inside the response.",
+      "disclaimer_banner": "Warm beige background (#F5F3E9), secondary text (#6B7A75). Reads 'Not a confirmed diagnosis. Please consult a doctor.'"
+    },
+    "inputs": {
+      "text": "56px height, rounded 16px, subtle background (#F9F9F7), 1px border. Large font size (18px) to accommodate easy typing and Hindi script."
+    },
+    "loaders": {
+      "skeleton": "Use subtle pulsing animations on rounded rectangles matching the anticipated AI response shape.",
+      "voice_recording": "Concentric pulsing rings in Primary or Accent color to indicate listening."
+    }
+  },
+  "motion_and_interactions": {
+    "transitions": "Smooth standard React Native transitions (LayoutAnimation or Reanimated) for screen changes.",
+    "haptics": "Crucial. Add haptic feedback (expo-haptics) on Voice Record start/stop, Camera capture, and when a Red Flag is presented to the user."
+  },
+  "accessibility_and_testing": {
+    "contrast": "Ensure all text meets minimum 4.5:1 ratio against backgrounds. Test both Hindi and English.",
+    "test_ids": "CRITICAL: All interactive elements (Pressable, TouchableOpacity, TextInput) and key text MUST include a `testID` attribute. Convention: kebab-case. e.g., `testID='camera-input-button'`."
+  },
+  "media_and_assets": {
+    "icons": "Use lucide-react-native. Large (32px+), stroke-width 2 or 2.5 for clarity. Outline over filled.",
+    "image_urls": [
+      {
+        "url": "https://images.unsplash.com/photo-1697715434811-abf3b7898ec1?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NjV8MHwxfHNlYXJjaHwyfHxtZWRpY2FsJTIwbGVhZiUyMHBsYW50JTIwaGVhbGluZ3xlbnwwfHx8fDE3NzY4MzQ3ODR8MA&ixlib=rb-4.1.0&q=85",
+        "category": "onboarding_header",
+        "description": "Close up of a large green leaf. Use as a soft header graphic or subtle background accent."
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1709735133597-6e4b7178e507?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzZ8MHwxfHNlYXJjaHwyfHxydXJhbCUyMGluZGlhJTIwdmlsbGFnZSUyMG5hdHVyZXxlbnwwfHx8fDE3NzY4MzQ3ODR8MA&ixlib=rb-4.1.0&q=85",
+        "category": "empty_state",
+        "description": "Lush green countryside. Can be used in subtle circular crop as a welcome image on the home screen."
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Develop the app using standard JavaScript files (.js, .jsx) as per project constraints. Do not use TypeScript (.tsx).",
+    "Install and use `lucide-react-native` for all icons.",
+    "Build a clean Home Screen focused purely on the 3 multi-modal inputs: A huge Camera Button, a huge Voice Record Button, and a Text Input field below them.",
+    "Implement the Gemini AI integration to accept text, image (`expo-image-picker`/`expo-camera`), or transcribed voice (`expo-av`).",
+    "Ensure the Hindi/English language toggle is extremely prominent, perhaps a floating chip or top-right header button (e.g., 'English / हिंदी'). State management should trigger instant UI translation.",
+    "On the Result Screen, render the AI response with generous line height. ALWAYS append the Medical Disclaimer UI at the bottom.",
+    "If the AI identifies serious symptoms, mount the Red-Flag Alert Component prominently above the response.",
+    "Use standard React Native StyleSheet for styling to keep things robust, utilizing the exact color codes and layout values defined in this JSON.",
+    "CRITICAL: Add `testID='some-element-name'` to every single interactive component and crucial text block."
+  ]
+}
