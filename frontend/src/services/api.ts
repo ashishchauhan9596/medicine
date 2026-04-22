@@ -45,22 +45,4 @@ export async function transcribeAudio(
   });
 }
 
-export type HistoryItem = {
-  id: string;
-  input_type: "image" | "voice" | "text";
-  query_text: string | null;
-  medicine_name: string | null;
-  response: MedicalResponse;
-  language: Lang;
-  created_at: string;
-};
-
-export async function fetchHistory(): Promise<HistoryItem[]> {
-  const res = await fetch(`${BASE_URL}/api/history`);
-  if (!res.ok) throw new Error("Failed to load history");
-  return (await res.json()) as HistoryItem[];
-}
-
-export async function clearHistory(): Promise<void> {
-  await fetch(`${BASE_URL}/api/history`, { method: "DELETE" });
-}
+// history endpoints removed

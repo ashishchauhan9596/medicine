@@ -22,7 +22,6 @@ import {
   Camera,
   Mic,
   Send,
-  History as HistoryIcon,
   Image as ImageIcon,
   X,
   Leaf,
@@ -351,18 +350,6 @@ export default function HomeScreen() {
               </View>
             ) : null}
 
-            {/* History link */}
-            <Pressable
-              testID="history-button"
-              onPress={() => router.push("/history")}
-              style={({ pressed }) => [
-                styles.historyLink,
-                pressed && styles.pressed,
-              ]}
-            >
-              <HistoryIcon size={18} color={COLORS.primary} strokeWidth={2.4} />
-              <Text style={styles.historyLinkText}>{t("history")}</Text>
-            </Pressable>
           </ScrollView>
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
@@ -553,20 +540,6 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   loadingText: { color: COLORS.textSecondary, fontSize: 15 },
-
-  historyLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: SPACING.sm,
-    paddingVertical: SPACING.md,
-  },
-  historyLinkText: {
-    color: COLORS.primary,
-    fontWeight: "700",
-    marginLeft: SPACING.xs,
-    fontSize: 15,
-  },
 
   modalBackdrop: {
     flex: 1,
