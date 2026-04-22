@@ -1,0 +1,28 @@
+{
+  "summary": "Frontend-only regression on mobile viewport 390x844 after keyboard handling refactor (TouchableWithoutFeedback removed). All 6 requested flows PASS. Text input typing now works correctly on mobile preview - both fill() and keyboard.type() reliably set the value. Ask flow navigates to /result and Gemini-backed result-card + disclaimer-banner render. Language toggle switches 'Pahadi Pharma' -> 'पहाड़ी फार्मा'. Camera modal opens with all 3 options. TextInput receives focus on tap and accepts typed input.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "voice flow", "issue": "expo-av deprecated in SDK 54 - console warnings on load (non-blocking). Plan migration to expo-audio/expo-video."}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_pahadi_api.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional only: migrate expo-av -> expo-audio to silence SDK 54 deprecation warnings"
+  ],
+  "critical_code_review_comments": [
+    "KeyboardAvoidingView + ScrollView(keyboardShouldPersistTaps='handled', keyboardDismissMode='on-drag') is correctly configured in app/index.tsx.",
+    "TextInput has onFocus -> scrollRef.scrollToEnd with 300ms delay; focus verified working on web preview.",
+    "api.ts reads EXPO_PUBLIC_BACKEND_URL from env (good, no hardcoding)."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "not tested (frontend-only request)", "frontend": "100% (6/6 flows)"},
+  "seed_data_creation": "None - tests did not create persistent data.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Typing bug is RESOLVED. Verified text-input accepts both playwright fill() and keyboard.type() on 390x844 viewport, value reads back correctly, and TextInput is focusable. Full ask->result flow end-to-end is green against live Gemini backend (paracetamol tablet -> valid JSON response rendered as result-card with disclaimer-banner). Language toggle, camera modal, and keyboard focus all confirmed working. Use EXPO_PUBLIC_BACKEND_URL from /app/frontend/.env for any API tests.",
+  "rca_of_issue": "Previous typing failure was caused by TouchableWithoutFeedback wrapper intercepting taps on mobile web. Fix (removing the wrapper and relying on ScrollView's keyboardShouldPersistTaps='handled') is validated: TextInput now becomes document.activeElement on tap and onChangeText fires correctly."
+}
