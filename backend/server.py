@@ -8,6 +8,7 @@ import json
 import base64
 import logging
 import uuid
+import asyncio
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import List, Optional, Literal
@@ -144,6 +145,24 @@ def _build_user_instruction(task: str, language: Language) -> str:
     return f"{task}\n\n{lang_line}\n\nReturn ONLY the JSON object."
 
 
+async def _post_gemini(payload: dict) -> dict:
+    """POST to Gemini with 2 retries on 5xx."""
+    headers = {"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY}
+    last_err = None
+    async with httpx.AsyncClient(timeout=60.0) as hc:
+        for attempt in range(3):
+            r = await hc.post(GEMINI_URL, headers=headers, json=payload)
+            if r.status_code == 200:
+                return r.json()
+            last_err = (r.status_code, r.text[:500])
+            if 500 <= r.status_code < 600 and attempt < 2:
+                await asyncio.sleep(0.8 * (attempt + 1))
+                continue
+            break
+    logger.error("Gemini error after retries: %s", last_err)
+    raise HTTPException(status_code=502, detail=f"Gemini API error: {last_err[0] if last_err else 'unknown'}")
+
+
 async def _call_gemini(parts: list) -> dict:
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
@@ -156,15 +175,7 @@ async def _call_gemini(parts: list) -> dict:
             "response_mime_type": "application/json",
         },
     }
-    headers = {"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY}
-
-    async with httpx.AsyncClient(timeout=60.0) as hc:
-        r = await hc.post(GEMINI_URL, headers=headers, json=payload)
-    if r.status_code != 200:
-        logger.error("Gemini error %s: %s", r.status_code, r.text[:500])
-        raise HTTPException(status_code=502, detail=f"Gemini API error: {r.status_code}")
-
-    data = r.json()
+    data = await _post_gemini(payload)
     try:
         text = data["candidates"][0]["content"]["parts"][0]["text"]
     except (KeyError, IndexError):
@@ -174,7 +185,6 @@ async def _call_gemini(parts: list) -> dict:
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        # best-effort: strip ```json fences
         cleaned = text.strip().strip("`")
         if cleaned.lower().startswith("json"):
             cleaned = cleaned[4:].strip()
@@ -354,13 +364,7 @@ async def multi_medicine_query(req: MultiMedicineRequest):
             "response_mime_type": "application/json",
         },
     }
-    headers = {"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY}
-    async with httpx.AsyncClient(timeout=60.0) as hc:
-        r = await hc.post(GEMINI_URL, headers=headers, json=payload)
-    if r.status_code != 200:
-        logger.error("Gemini multi error %s: %s", r.status_code, r.text[:500])
-        raise HTTPException(status_code=502, detail=f"Gemini API error: {r.status_code}")
-    data = r.json()
+    data = await _post_gemini(payload)
     try:
         text = data["candidates"][0]["content"]["parts"][0]["text"]
         raw = json.loads(text)
