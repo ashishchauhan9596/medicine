@@ -12,8 +12,7 @@ import {
   Modal,
   TouchableWithoutFeedback,
   Keyboard,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+} from "react-native";import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
 import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
@@ -56,6 +55,7 @@ export default function HomeScreen() {
   const [isRecording, setIsRecording] = useState(false);
   const [transcribed, setTranscribed] = useState<string | null>(null);
   const [showImageModal, setShowImageModal] = useState(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   const isBusy = busy.kind !== "idle" || isRecording;
 
@@ -219,11 +219,15 @@ export default function HomeScreen() {
       <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
         <KeyboardAvoidingView
           style={styles.flex}
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
         >
           <ScrollView
+            ref={scrollRef}
             contentContainerStyle={styles.scroll}
             keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            showsVerticalScrollIndicator={false}
           >
             {/* Header */}
             <View style={styles.header}>
@@ -327,6 +331,11 @@ export default function HomeScreen() {
                   editable={!isBusy || busy.kind === "transcribing"}
                   returnKeyType="search"
                   onSubmitEditing={() => onAskText()}
+                  onFocus={() => {
+                    setTimeout(() => {
+                      scrollRef.current?.scrollToEnd({ animated: true });
+                    }, 300);
+                  }}
                 />
                 <Pressable
                   testID="ask-button"
