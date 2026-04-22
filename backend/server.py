@@ -1,60 +1,310 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import io
+import json
+import base64
 import logging
-from pathlib import Path
-from pydantic import BaseModel, Field
-from typing import List
 import uuid
-from datetime import datetime
-
+from pathlib import Path
+from datetime import datetime, timezone
+from typing import List, Optional, Literal
+from pydantic import BaseModel, Field
+import httpx
 
 ROOT_DIR = Path(__file__).parent
-load_dotenv(ROOT_DIR / '.env')
+load_dotenv(ROOT_DIR / ".env")
 
-# MongoDB connection
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+# ---- Config ----
+MONGO_URL = os.environ["MONGO_URL"]
+DB_NAME = os.environ["DB_NAME"]
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+EMERGENT_LLM_KEY = os.environ.get("EMERGENT_LLM_KEY", "")
 
-# Create the main app without a prefix
-app = FastAPI()
+GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 
-# Create a router with the /api prefix
+# ---- Mongo ----
+client = AsyncIOMotorClient(MONGO_URL)
+db = client[DB_NAME]
+
+app = FastAPI(title="Pahadi Pharma Assistant API")
 api_router = APIRouter(prefix="/api")
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger("pahadi")
 
-# Define Models
-class StatusCheck(BaseModel):
+# =========================================================
+# Models
+# =========================================================
+Language = Literal["en", "hi"]
+
+LANG_NAME = {"en": "English", "hi": "Hindi (हिंदी)"}
+
+
+class MedicalResponse(BaseModel):
+    medicine_name: Optional[str] = None
+    summary: str
+    uses: List[str] = []
+    common_dosage_note: str = ""
+    safety_tips: List[str] = []
+    side_effects: List[str] = []
+    when_to_see_doctor: List[str] = []
+    red_flag: bool = False
+    red_flag_message: Optional[str] = None
+    disclaimer: str
+    language: Language = "en"
+
+
+class ImageIdentifyRequest(BaseModel):
+    image_base64: str
+    mime_type: str = "image/jpeg"
+    language: Language = "en"
+
+
+class TextQueryRequest(BaseModel):
+    query: str
+    language: Language = "en"
+
+
+class AudioTranscribeRequest(BaseModel):
+    audio_base64: str
+    mime_type: str = "audio/m4a"
+
+
+class HistoryItem(BaseModel):
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    input_type: Literal["image", "voice", "text"]
+    query_text: Optional[str] = None
+    medicine_name: Optional[str] = None
+    response: MedicalResponse
+    language: Language = "en"
+    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
 
-# Add your routes to the router instead of directly to app
+# =========================================================
+# Gemini helpers
+# =========================================================
+SYSTEM_PROMPT = """You are "Pahadi Pharma Assistant" - a safe, friendly General Physician assistant for rural and semi-urban users in India. Your role is first-level guidance ONLY. You are NOT a replacement for a licensed doctor.
+
+STRICT RULES:
+1. NEVER prescribe strong / scheduled / prescription-only drugs (antibiotics, steroids, opioids, benzodiazepines, chemotherapy, etc.) without clearly telling the user to see a doctor.
+2. NEVER invent a medicine name. If unsure, say so clearly.
+3. NEVER give exact dosages for risky medicines without doctor supervision. For common OTC items (paracetamol, ORS, antacid), give only standard adult OTC label guidance and tell the user to follow the packaging.
+4. ALWAYS detect RED FLAG symptoms: chest pain, severe bleeding, breathing difficulty, stroke signs (face droop, slurred speech), seizures, unconscious, severe abdominal pain, pregnancy emergencies, suicidal thoughts, high fever in infants <3 months, severe dehydration. If ANY red flag: set red_flag=true and urge immediate ER/hospital visit.
+5. Use very SIMPLE short sentences. Assume limited medical literacy.
+6. Respond in the user's requested language: English or Hindi (हिंदी / Devanagari). Keep it simple and conversational.
+7. ALWAYS include the disclaimer.
+
+OUTPUT FORMAT — return ONLY valid minified JSON, no markdown, no prose around it. Schema:
+{
+ "medicine_name": string|null,
+ "summary": string,                          // 1-3 simple lines
+ "uses": [string],                           // short bullet points
+ "common_dosage_note": string,               // safe general note, tell user to follow packaging / doctor
+ "safety_tips": [string],
+ "side_effects": [string],
+ "when_to_see_doctor": [string],
+ "red_flag": boolean,
+ "red_flag_message": string|null,            // short urgent message if red_flag
+ "disclaimer": string,                       // "This is not a confirmed diagnosis. Please consult a qualified doctor." (translate to requested language)
+ "language": "en"|"hi"
+}
+"""
+
+
+def _build_user_instruction(task: str, language: Language) -> str:
+    lang_line = f"Respond in {LANG_NAME[language]}. Set language field to '{language}'."
+    return f"{task}\n\n{lang_line}\n\nReturn ONLY the JSON object."
+
+
+async def _call_gemini(parts: list) -> dict:
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY not configured")
+
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": parts}],
+        "generationConfig": {
+            "temperature": 0.2,
+            "response_mime_type": "application/json",
+        },
+    }
+    headers = {"Content-Type": "application/json", "X-goog-api-key": GEMINI_API_KEY}
+
+    async with httpx.AsyncClient(timeout=60.0) as hc:
+        r = await hc.post(GEMINI_URL, headers=headers, json=payload)
+    if r.status_code != 200:
+        logger.error("Gemini error %s: %s", r.status_code, r.text[:500])
+        raise HTTPException(status_code=502, detail=f"Gemini API error: {r.status_code}")
+
+    data = r.json()
+    try:
+        text = data["candidates"][0]["content"]["parts"][0]["text"]
+    except (KeyError, IndexError):
+        logger.error("Bad Gemini response: %s", str(data)[:500])
+        raise HTTPException(status_code=502, detail="Unexpected Gemini response")
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        # best-effort: strip ```json fences
+        cleaned = text.strip().strip("`")
+        if cleaned.lower().startswith("json"):
+            cleaned = cleaned[4:].strip()
+        return json.loads(cleaned)
+
+
+def _coerce_response(raw: dict, language: Language) -> MedicalResponse:
+    default_disclaimer = (
+        "यह पुष्ट निदान नहीं है। कृपया किसी योग्य डॉक्टर से परामर्श करें।"
+        if language == "hi"
+        else "This is not a confirmed diagnosis. Please consult a qualified doctor."
+    )
+    return MedicalResponse(
+        medicine_name=raw.get("medicine_name"),
+        summary=raw.get("summary", ""),
+        uses=raw.get("uses", []) or [],
+        common_dosage_note=raw.get("common_dosage_note", "") or "",
+        safety_tips=raw.get("safety_tips", []) or [],
+        side_effects=raw.get("side_effects", []) or [],
+        when_to_see_doctor=raw.get("when_to_see_doctor", []) or [],
+        red_flag=bool(raw.get("red_flag", False)),
+        red_flag_message=raw.get("red_flag_message"),
+        disclaimer=raw.get("disclaimer") or default_disclaimer,
+        language=raw.get("language", language) if raw.get("language") in ("en", "hi") else language,
+    )
+
+
+# =========================================================
+# Endpoints
+# =========================================================
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"app": "Pahadi Pharma Assistant", "status": "ok"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.dict()
-    status_obj = StatusCheck(**status_dict)
-    _ = await db.status_checks.insert_one(status_obj.dict())
-    return status_obj
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    status_checks = await db.status_checks.find().to_list(1000)
-    return [StatusCheck(**status_check) for status_check in status_checks]
+@api_router.get("/health")
+async def health():
+    return {"status": "ok", "gemini_model": GEMINI_MODEL, "has_gemini_key": bool(GEMINI_API_KEY)}
 
-# Include the router in the main app
+
+@api_router.post("/identify-medicine", response_model=MedicalResponse)
+async def identify_medicine(req: ImageIdentifyRequest):
+    task = (
+        "The user uploaded a photograph of a medicine (tablet strip, bottle, syrup, ointment, or package). "
+        "1) Identify the medicine name and brand if visible on the packaging. "
+        "2) If you cannot read the name clearly, set medicine_name to null and explain in summary. "
+        "3) Explain in simple words what this medicine is commonly used for, safety tips, common mild side effects. "
+        "4) Do NOT invent a name. Do NOT give specific dosages for prescription drugs."
+    )
+    parts = [
+        {"inline_data": {"mime_type": req.mime_type, "data": req.image_base64}},
+        {"text": _build_user_instruction(task, req.language)},
+    ]
+    raw = await _call_gemini(parts)
+    resp = _coerce_response(raw, req.language)
+
+    await db.history.insert_one(
+        HistoryItem(
+            input_type="image",
+            medicine_name=resp.medicine_name,
+            response=resp,
+            language=req.language,
+        ).model_dump()
+    )
+    return resp
+
+
+@api_router.post("/medical-query", response_model=MedicalResponse)
+async def medical_query(req: TextQueryRequest):
+    if not req.query.strip():
+        raise HTTPException(status_code=400, detail="Query is empty")
+
+    task = (
+        "The user is asking about a medicine or describing a symptom. "
+        f'User query: "{req.query.strip()}". '
+        "If they mentioned a medicine name, explain what it is and safe usage. "
+        "If they described a symptom, give simple first-level advice (home care + when to see a doctor). "
+        "Check for RED FLAG symptoms carefully."
+    )
+    parts = [{"text": _build_user_instruction(task, req.language)}]
+    raw = await _call_gemini(parts)
+    resp = _coerce_response(raw, req.language)
+
+    await db.history.insert_one(
+        HistoryItem(
+            input_type="text",
+            query_text=req.query.strip(),
+            medicine_name=resp.medicine_name,
+            response=resp,
+            language=req.language,
+        ).model_dump()
+    )
+    return resp
+
+
+@api_router.post("/transcribe-audio")
+async def transcribe_audio(req: AudioTranscribeRequest):
+    """Transcribe short audio (voice → medicine name / query) via OpenAI Whisper."""
+    try:
+        from emergentintegrations.llm.openai import OpenAISpeechToText
+    except Exception as e:  # pragma: no cover
+        raise HTTPException(status_code=500, detail=f"STT library not available: {e}")
+
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
+
+    try:
+        audio_bytes = base64.b64decode(req.audio_base64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid base64 audio")
+
+    # File extension from mime
+    ext = "m4a"
+    if "wav" in req.mime_type:
+        ext = "wav"
+    elif "mp3" in req.mime_type or "mpeg" in req.mime_type:
+        ext = "mp3"
+    elif "webm" in req.mime_type:
+        ext = "webm"
+
+    buf = io.BytesIO(audio_bytes)
+    buf.name = f"audio.{ext}"
+
+    stt = OpenAISpeechToText(api_key=EMERGENT_LLM_KEY)
+    try:
+        response = await stt.transcribe(
+            file=buf,
+            model="whisper-1",
+            response_format="json",
+            prompt="The user is naming a medicine or describing a symptom.",
+        )
+        text = getattr(response, "text", "") or ""
+    except Exception as e:
+        logger.error("Whisper failed: %s", e)
+        raise HTTPException(status_code=502, detail=f"Transcription failed: {e}")
+
+    return {"text": text.strip()}
+
+
+@api_router.get("/history", response_model=List[HistoryItem])
+async def get_history(limit: int = 50):
+    cursor = db.history.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    items = await cursor.to_list(length=limit)
+    return [HistoryItem(**i) for i in items]
+
+
+@api_router.delete("/history")
+async def clear_history():
+    result = await db.history.delete_many({})
+    return {"deleted": result.deleted_count}
+
+
+# Register router and middleware
 app.include_router(api_router)
-
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
@@ -63,12 +313,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():

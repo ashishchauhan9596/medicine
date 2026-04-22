@@ -1,0 +1,104 @@
+export type Lang = "en" | "hi";
+
+export const LANGS: { code: Lang; label: string }[] = [
+  { code: "en", label: "English" },
+  { code: "hi", label: "हिंदी" },
+];
+
+type Dict = Record<string, string>;
+
+const en: Dict = {
+  app_name: "Pahadi Pharma",
+  tagline: "Safe first-level medical guidance",
+  camera_btn: "Scan Medicine",
+  camera_hint: "Take or upload a photo",
+  voice_btn: "Speak",
+  voice_hint: "Say the medicine name",
+  text_placeholder: "Type medicine name or symptom",
+  ask_btn: "Ask Assistant",
+  history: "History",
+  recording: "Listening…",
+  stop_recording: "Tap to stop",
+  loading: "Thinking safely…",
+  error_generic: "Something went wrong. Please try again.",
+  error_empty: "Please provide an input first.",
+  permission_denied: "Permission denied. Please enable it in settings.",
+  summary: "Summary",
+  uses: "Common uses",
+  dosage: "Dosage note",
+  safety: "Safety tips",
+  side_effects: "Possible side effects",
+  see_doctor: "When to see a doctor",
+  red_flag_title: "🚨 This may be serious",
+  red_flag_body: "Please consult a doctor immediately.",
+  disclaimer_default:
+    "This is not a confirmed diagnosis. Please consult a qualified doctor.",
+  back: "Back",
+  retry: "Retry",
+  no_history: "No past queries yet.",
+  clear_history: "Clear all",
+  image_input: "Photo",
+  voice_input: "Voice",
+  text_input: "Text",
+  empty_state_title: "How can we help today?",
+  empty_state_body:
+    "Scan a medicine pack, speak a name, or type your symptom. We'll help you understand it safely.",
+  medicine_name: "Medicine",
+  identify_cta: "Identify this medicine",
+  pick_from_gallery: "Pick from gallery",
+  take_photo: "Take photo",
+  cancel: "Cancel",
+  edit_transcription: "Edit before searching",
+  search: "Search",
+};
+
+const hi: Dict = {
+  app_name: "पहाड़ी फार्मा",
+  tagline: "सुरक्षित प्राथमिक चिकित्सा मार्गदर्शन",
+  camera_btn: "दवा स्कैन करें",
+  camera_hint: "फ़ोटो लें या अपलोड करें",
+  voice_btn: "बोलें",
+  voice_hint: "दवा का नाम बोलें",
+  text_placeholder: "दवा का नाम या लक्षण लिखें",
+  ask_btn: "सहायक से पूछें",
+  history: "इतिहास",
+  recording: "सुन रहा है…",
+  stop_recording: "रोकने के लिए टैप करें",
+  loading: "सुरक्षित उत्तर तैयार हो रहा है…",
+  error_generic: "कुछ गड़बड़ हुई। फिर कोशिश करें।",
+  error_empty: "कृपया पहले कुछ दर्ज करें।",
+  permission_denied: "अनुमति नहीं मिली। सेटिंग्स में चालू करें।",
+  summary: "सार",
+  uses: "सामान्य उपयोग",
+  dosage: "खुराक संबंधी नोट",
+  safety: "सुरक्षा सुझाव",
+  side_effects: "संभावित दुष्प्रभाव",
+  see_doctor: "डॉक्टर को कब दिखाएँ",
+  red_flag_title: "🚨 यह गंभीर हो सकता है",
+  red_flag_body: "कृपया तुरंत डॉक्टर से मिलें।",
+  disclaimer_default:
+    "यह पुष्ट निदान नहीं है। कृपया किसी योग्य डॉक्टर से परामर्श करें।",
+  back: "वापस",
+  retry: "पुनः प्रयास",
+  no_history: "अभी तक कोई खोज नहीं।",
+  clear_history: "सब मिटाएँ",
+  image_input: "फ़ोटो",
+  voice_input: "आवाज़",
+  text_input: "पाठ",
+  empty_state_title: "आज हम कैसे मदद करें?",
+  empty_state_body:
+    "दवा का पैकेट स्कैन करें, नाम बोलें, या लक्षण लिखें। हम सुरक्षित मार्गदर्शन देंगे।",
+  medicine_name: "दवा",
+  identify_cta: "इस दवा की पहचान करें",
+  pick_from_gallery: "गैलरी से चुनें",
+  take_photo: "फ़ोटो लें",
+  cancel: "रद्द करें",
+  edit_transcription: "खोज से पहले संपादित करें",
+  search: "खोजें",
+};
+
+export const translations: Record<Lang, Dict> = { en, hi };
+
+export function tFor(lang: Lang, key: string): string {
+  return translations[lang][key] ?? translations.en[key] ?? key;
+}
