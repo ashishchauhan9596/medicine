@@ -1,60 +1,68 @@
 import React from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Languages } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
+
 import { COLORS, RADIUS, SPACING } from "../theme";
 import { useAppStore } from "../store/useAppStore";
-import type { Lang } from "../i18n/translations";
 
 export default function LanguageToggle() {
   const lang = useAppStore((s) => s.lang);
   const setLang = useAppStore((s) => s.setLang);
 
-  const pick = (l: Lang) => setLang(l);
+  const toggle = () => {
+    Haptics.selectionAsync().catch(() => {});
+    setLang(lang === "en" ? "hi" : "en");
+  };
 
   return (
-    <View style={styles.wrap} testID="language-toggle">
-      <Pressable
-        testID="lang-en"
-        onPress={() => pick("en")}
-        style={[styles.pill, lang === "en" && styles.pillActive]}
-      >
+    <Pressable
+      testID="language-toggle"
+      onPress={toggle}
+      hitSlop={10}
+      style={({ pressed }) => [styles.btn, pressed && styles.pressed]}
+    >
+      <Languages size={20} color={COLORS.primary} strokeWidth={2.4} />
+      <View style={styles.labelWrap}>
         <Text
-          style={[styles.pillText, lang === "en" && styles.pillTextActive]}
+          testID={lang === "en" ? "lang-en" : "lang-hi"}
+          style={styles.label}
         >
-          EN
+          {lang === "en" ? "EN" : "हिं"}
         </Text>
-      </Pressable>
-      <Pressable
-        testID="lang-hi"
-        onPress={() => pick("hi")}
-        style={[styles.pill, lang === "hi" && styles.pillActive]}
-      >
-        <Text
-          style={[styles.pillText, lang === "hi" && styles.pillTextActive]}
-        >
-          हिंदी
-        </Text>
-      </Pressable>
-    </View>
+      </View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    flexDirection: "row",
-    backgroundColor: COLORS.surface,
+  btn: {
+    width: 48,
+    height: 48,
     borderRadius: RADIUS.full,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.borderSubtle,
-    padding: 4,
-  },
-  pill: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.full,
-    minWidth: 56,
     alignItems: "center",
+    justifyContent: "center",
   },
-  pillActive: { backgroundColor: COLORS.primary },
-  pillText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: "700" },
-  pillTextActive: { color: COLORS.textInverse },
+  pressed: { opacity: 0.85, transform: [{ scale: 0.96 }] },
+  labelWrap: {
+    position: "absolute",
+    bottom: -2,
+    right: -2,
+    minWidth: 22,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: COLORS.primary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  label: {
+    color: COLORS.textInverse,
+    fontSize: 10,
+    fontWeight: "800",
+    letterSpacing: 0.3,
+  },
 });

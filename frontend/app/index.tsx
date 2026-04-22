@@ -232,11 +232,17 @@ export default function HomeScreen() {
                 <View style={styles.logoBubble}>
                   <Leaf size={22} color={COLORS.primary} strokeWidth={2.4} />
                 </View>
-                <View>
-                  <Text style={styles.brand} testID="app-title">
+                <View style={styles.brandTextWrap}>
+                  <Text
+                    style={styles.brand}
+                    testID="app-title"
+                    numberOfLines={1}
+                  >
                     {t("app_name")}
                   </Text>
-                  <Text style={styles.tagline}>{t("tagline")}</Text>
+                  <Text style={styles.tagline} numberOfLines={1}>
+                    {t("tagline")}
+                  </Text>
                 </View>
               </View>
               <LanguageToggle />
@@ -422,8 +428,16 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: SPACING.lg,
+    gap: SPACING.sm,
   },
-  brandRow: { flexDirection: "row", alignItems: "center", gap: SPACING.sm },
+  brandRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+    minWidth: 0,
+    marginRight: SPACING.sm,
+  },
+  brandTextWrap: { flex: 1, minWidth: 0 },
   logoBubble: {
     width: 44,
     height: 44,
@@ -433,8 +447,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginRight: SPACING.sm,
   },
-  brand: { fontSize: 22, fontWeight: "800", color: COLORS.textPrimary },
-  tagline: { fontSize: 13, color: COLORS.textSecondary, marginTop: 1 },
+  brand: { fontSize: 20, fontWeight: "800", color: COLORS.textPrimary },
+  tagline: { fontSize: 12, color: COLORS.textSecondary, marginTop: 1 },
 
   heroCard: {
     backgroundColor: COLORS.primaryLight,
