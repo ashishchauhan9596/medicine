@@ -55,6 +55,13 @@ export default function HomeScreen() {
   const [transcribed, setTranscribed] = useState<string | null>(null);
   const [showImageModal, setShowImageModal] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+  const typeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (typeIntervalRef.current) clearInterval(typeIntervalRef.current);
+    };
+  }, []);
 
   const isBusy = busy.kind !== "idle" || isRecording;
 
@@ -208,10 +215,14 @@ export default function HomeScreen() {
       // Type the transcription into the input char-by-char, like AI is writing.
       setText("");
       let i = 0;
-      const typeInterval = setInterval(() => {
+      if (typeIntervalRef.current) clearInterval(typeIntervalRef.current);
+      typeIntervalRef.current = setInterval(() => {
         i += 1;
         setText(cleaned.slice(0, i));
-        if (i >= cleaned.length) clearInterval(typeInterval);
+        if (i >= cleaned.length && typeIntervalRef.current) {
+          clearInterval(typeIntervalRef.current);
+          typeIntervalRef.current = null;
+        }
       }, 35);
     } catch (e) {
       handleError(e);
