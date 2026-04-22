@@ -205,7 +205,14 @@ export default function HomeScreen() {
         () => {},
       );
       setTranscribed(cleaned);
-      setText(cleaned);
+      // Type the transcription into the input char-by-char, like AI is writing.
+      setText("");
+      let i = 0;
+      const typeInterval = setInterval(() => {
+        i += 1;
+        setText(cleaned.slice(0, i));
+        if (i >= cleaned.length) clearInterval(typeInterval);
+      }, 35);
     } catch (e) {
       handleError(e);
     } finally {
