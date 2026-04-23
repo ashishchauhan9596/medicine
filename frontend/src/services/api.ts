@@ -78,10 +78,7 @@ async function callGemini(prompt: string, image?: { data: string; mimeType: stri
   try {
     const model = genAI.getGenerativeModel({ 
       model: MODEL_NAME,
-      systemInstruction: (isMulti ? MULTI_SYSTEM_PROMPT : SYSTEM_PROMPT) + "\n\nTHINKING MODE: Before generating the JSON, mentally analyze all safety aspects and interactions. Ensure 100% accuracy for each medicine. Be concise but thorough.",
-      generationConfig: {
-        responseMimeType: "application/json",
-      }
+      systemInstruction: (isMulti ? MULTI_SYSTEM_PROMPT : SYSTEM_PROMPT),
     });
 
     const parts: any[] = [{ text: prompt }];
@@ -94,14 +91,18 @@ async function callGemini(prompt: string, image?: { data: string; mimeType: stri
       });
     }
 
-    console.log("[Gemini] Generating content (JSON Mode)...");
+    console.log("[Gemini] Generating content...");
     const result = await model.generateContent(parts);
     const response = await result.response;
     const text = response.text();
-    console.log("[Gemini] Received JSON response");
+    console.log("[Gemini] Received response");
+    
+    // Clean potential markdown blocks
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    const cleaned = jsonMatch ? jsonMatch[0] : text;
     
     try {
-      return JSON.parse(text);
+      return JSON.parse(cleaned);
     } catch (e) {
       console.error("[Gemini] JSON Parse Error. Raw text:", text);
       throw new Error("AI response was not in the correct format. Please try again.");
