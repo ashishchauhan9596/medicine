@@ -45,7 +45,7 @@ export default function ResultScreen() {
         {inputLabel ? (
           <View style={styles.queryChip} testID="query-chip">
             <Text style={styles.queryChipLabel}>
-              {t("search").toUpperCase()}
+              {t("your_query").toUpperCase()}
             </Text>
             <Text style={styles.queryChipText} numberOfLines={3}>
               {inputLabel}
@@ -89,7 +89,7 @@ export default function ResultScreen() {
             pressed && { opacity: 0.85 },
           ]}
         >
-          <Text style={styles.newBtnText}>{t("search")}</Text>
+          <Text style={styles.newBtnText}>{t("new_search")}</Text>
         </Pressable>
       </ScrollView>
     </SafeAreaView>

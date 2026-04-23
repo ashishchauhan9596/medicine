@@ -39,7 +39,7 @@ import {
   transcribeAudio,
 } from "../src/services/api";
 
-const MAX_MEDICINES = 3;
+const MAX_MEDICINES = 10;
 
 export default function HomeScreen() {
   const router = useRouter();
