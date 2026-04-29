@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   Keyboard,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as ImagePicker from "expo-image-picker";
@@ -267,19 +268,11 @@ export default function HomeScreen() {
         >
           {/* Header */}
           <View style={styles.header}>
-            <View style={styles.brandRow}>
-              <View style={styles.logoBubble}>
-                <Leaf size={22} color={COLORS.primary} strokeWidth={2.4} />
-              </View>
-              <View style={styles.brandTextWrap}>
-                <Text style={styles.brand} testID="app-title" numberOfLines={1}>
-                  {t("app_name")}
-                </Text>
-                <Text style={styles.tagline} numberOfLines={1}>
-                  {t("tagline")}
-                </Text>
-              </View>
-            </View>
+            <Image 
+              source={require("../assets/logo-horizontal.png")} 
+              style={styles.logoImage} 
+              resizeMode="contain"
+            />
             <LanguageToggle />
           </View>
 
@@ -485,7 +478,10 @@ const styles = StyleSheet.create({
     justifyContent: "space-between",
     alignItems: "center",
     marginBottom: SPACING.lg,
-    gap: SPACING.sm,
+  },
+  logoImage: {
+    width: 180,
+    height: 45,
   },
   brandRow: {
     flexDirection: "row",

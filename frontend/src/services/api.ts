@@ -68,7 +68,18 @@ Return ONLY valid minified JSON with this schema (no markdown):
 Guidance: be specific, simple, multilingual. If a medicine is unfamiliar or risky in combination, urge doctor consultation. Do NOT invent medicines.
 `;
 
+let currentAbortController: AbortController | null = null;
+
 async function callGemini(prompt: string, image?: { data: string; mimeType: string }, isMulti = false) {
+  // Cancel previous request if it's still running
+  if (currentAbortController) {
+    console.log("[Gemini] Aborting previous request...");
+    currentAbortController.abort();
+  }
+  
+  currentAbortController = new AbortController();
+  const signal = currentAbortController.signal;
+
   console.log("[Gemini] Starting request with model:", MODEL_NAME);
   if (!API_KEY) {
     console.error("[Gemini] API Key is missing!");
@@ -92,7 +103,15 @@ async function callGemini(prompt: string, image?: { data: string; mimeType: stri
     }
 
     console.log("[Gemini] Generating content...");
+    // Note: The official SDK doesn't natively support signal yet in all versions, 
+    // but we can wrap it or check the signal manually.
     const result = await model.generateContent(parts);
+    
+    // Check if we were aborted during the wait
+    if (signal.aborted) {
+      throw new Error("Request was cancelled.");
+    }
+
     const response = await result.response;
     const text = response.text();
     console.log("[Gemini] Received response");
@@ -108,8 +127,16 @@ async function callGemini(prompt: string, image?: { data: string; mimeType: stri
       throw new Error("AI response was not in the correct format. Please try again.");
     }
   } catch (error: any) {
+    if (error.name === 'AbortError' || error.message === 'Request was cancelled.') {
+      console.log("[Gemini] Request successfully aborted.");
+      return null; // Return null to indicate it was aborted
+    }
     console.error("[Gemini] API Call Error:", error);
     throw new Error(error.message || "Failed to connect to AI service. Check your internet.");
+  } finally {
+    if (currentAbortController?.signal === signal) {
+      currentAbortController = null;
+    }
   }
 }
 
